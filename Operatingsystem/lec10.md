@@ -1,129 +1,167 @@
+# Process Management: States, PCB, Schedulers, and Context Switching
 
-# Process => is a program under execution
+---
 
-## .cpp => compiler => compiler => executable => program
+## 1. What is a Process?
 
-## How OS creates the process?
+A **Process** is a program in active execution.
+* **From Source Code to Process**:
+  ```
+  Source Code (.cpp) ──[Compiler/Linker]──► Executable File (on disk) ──[OS Loader]──► Process (in RAM)
+  ```
+* When an executable is invoked, the OS creates an execution context:
+  1. Loads compiled machine instructions and static global data into memory.
+  2. Allocates the **Call Stack** (for local variables, function arguments, and return addresses).
+  3. Allocates the **Heap** (for runtime dynamic memory allocations).
+  4. Sets up file descriptors for standard input, output, and error (`stdin`, `stdout`, `stderr`).
+  5. Initializes CPU registers, including pointing the **Program Counter (PC)** to the entry point `main()`.
 
-### load the program and static data to memory (static data is data used for initialization)
-### Allocate run-time stack (part of memory used for local variable,function arguement and return values)
-### Allocate heap (part of memory used for dynamic allocation)
-### I/O related task ()
+---
 
-# Process communication 
+## 2. Process Control Block (PCB)
 
-## Independent vs Cooperative Processes
-## *Independent Process*:
-### Doesn’t affect or get affected by any other process.
-### Doesn’t share data with others.
-### Cooperative Process:
-### Can affect or be affected by others.
-### Shares data.
-### Example: Producer-Consumer problem.
+The **Process Control Block (PCB)** (also known as the Task Control Block) is the core OS data structure that stores all information needed to manage, schedule, and pause/resume a specific process.
 
-## cooperative processes need IPC to share data/Info
-### Two models of IPC
+```
++--------------------------------------------------+
+|              Process Control Block (PCB)         |
++--------------------------------------------------+
+| Process ID (PID) & Parent Process ID (PPID)      |
+| Current State (New, Ready, Running, Waiting, ...) |
+| Program Counter (Address of next instruction)     |
+| CPU Registers (Accumulators, Index, Stack Pointer)|
+| CPU Scheduling Info (Priority, Queue Pointers)   |
+| Memory Management Info (Page Tables, Base/Limit) |
+| Accounting Info (CPU time used, process limits)  |
+| I/O Status Info (List of open files, I/O devices)|
++--------------------------------------------------+
+```
 
-## *Message parsing*
-### it works like email , one process sends using a system call another receives , suitable when processes dont share memory
-## *Shared memory*
-### memory region is shared , both processes read/write in it,faster but needs synchronization(eg:semaphores)
+When a process is paused during multitasking, the OS snapshots its exact CPU registers into its PCB so it can resume later without any loss of state.
 
-## *Swapping and dispatcher*
+---
 
-### moving process in/out of main memory to/from disk(external memory), happens wehn main memory is full or high-priority process comes , suspended processes are in the "suspended ready" state
-### Dispatcher is module that hands over cpu a selected process , works closely with sts and also responsible for context switching , Dispatcher latency : time taken to stop one process and start another
+## 3. Process Life Cycle: States and Transitions
 
-## *Types of schedulers*
+Modern operating systems transition processes through a multi-state lifecycle:
 
-### *Long Term Scheduler*
+```
+                  [Admit]
+      (New) ──────────────────► [ Ready Queue ]
+                                     ▲     │
+                     [Preemption /   │     │ [Scheduler
+                     Quantum Expire] │     │  Dispatch]
+                                     │     ▼
+                                  (Running) ──[Exit]──► (Terminated)
+                                     │
+                                     │ [I/O or Event Wait]
+                                     ▼
+                                 (Waiting / Blocked)
+                                     │
+                                     │ [I/O Complete]
+                                     └─────► (Ready)
+```
 
-### controls degree of multiprogramming(how many processes in memory) and picks jobs from the secondary memory to bring into main memory
+### The 5 Standard States:
+1. **New**: The process is being created and its PCB is being initialized.
+2. **Ready**: The process is in main memory (RAM) waiting to be allocated CPU time by the scheduler.
+3. **Running**: The process's instructions are currently executing on the physical CPU.
+4. **Waiting (Blocked)**: The process cannot execute because it is waiting for an external event (e.g., keyboard input, disk read, or network packet).
+5. **Terminated**: The process has finished execution and is waiting for its parent to reap its exit status.
 
-### *short term scheduler*
+### The 7-State Model (Swapped States):
+When RAM is fully saturated, the OS temporarily swaps processes out to secondary storage (swap space):
+* **Suspended Ready**: The process was ready to run, but was swapped out to disk to free RAM.
+* **Suspended Blocked**: The process is waiting for an I/O event and has also been swapped out to disk.
 
-### picks processes from the ready queue and gives cpu access , called frequently must be fast
+---
 
-### *Medium term scheduler*
+## 4. Scheduling Queues
 
-### swaps processes out of memory when overloaded , may bring them back later
+The operating system organizes processes in specialized linked lists called queues:
+1. **Job Queue**: Contains all newly submitted processes residing in secondary memory before admission to RAM.
+2. **Ready Queue**: Contains processes residing in RAM that are ready and waiting to receive CPU execution time.
+3. **Device / Waiting Queue**: Contains processes blocked waiting for a specific hardware device (e.g., waiting for the disk controller to read a block).
 
-<!-- Process Life cycle and states  -->
+---
 
-### new => program is being converted into a process
-### ready => in memory , waiting for cpu
-### run => executing on cpu
-### waiting(blocked) => waiting for I/O resource
-### Terminated => finished
-### suspended ready => in secondary memory
+## 5. Types of Operating System Schedulers
 
-<!-- Transitions:
-From Ready → Run (by STS).
-Run → Terminated when done.
-Run → Ready if time quantum is over.
-Run → Wait if IO is needed.
-Wait → Ready after IO is complete. -->
+```
+   Secondary Storage (Disk)               Main Memory (RAM)             CPU
++----------------------------+       +-------------------------+     +-------+
+|         Job Queue          | =====>|       Ready Queue       | ===>| Running
++----------------------------+  LTS  +-------------------------+ STS +-------+
+                                           ▲             │
+                                           └==== MTS ====┘
+                                            (Swap in/out)
+```
 
-## *PCB*
+| Scheduler | Common Name | Frequency of Execution | Primary Role |
+|---|---|---|---|
+| **Long-Term Scheduler (LTS)** | Job Scheduler | Infrequent (seconds/minutes) | Selects processes from disk and loads them into RAM. Controls the **Degree of Multiprogramming** (number of processes in memory). |
+| **Short-Term Scheduler (STS)** | CPU Scheduler | Extremely frequent (every 10–100 ms) | Selects a process from the Ready Queue and allocates the CPU to it. Must be ultra-fast to minimize overhead. |
+| **Medium-Term Scheduler (MTS)**| Swapper | Intermediate | Temporarily swaps inactive/overloaded processes out of RAM to disk (and back) to relieve memory pressure. |
 
-### pcb is also called as task control block , data structure to store everything about a process , it is created when a process starts and deleted on termination
+---
 
-### pcb contains process id,state, stack , priority l program counter, cpu registers, memory info,IO info
+## 6. The Dispatcher and Dispatcher Latency
 
-### PCB helps the os to pause/resume processes efficiently
+* **Scheduler vs. Dispatcher**:
+  * The **Scheduler** merely selects *which* process should run next from the ready queue.
+  * The **Dispatcher** is the OS module that *actually gives control of the CPU* to the selected process.
+* **Dispatcher Responsibilities**:
+  1. Switching execution context (saving old registers, restoring new ones).
+  2. Switching from kernel mode to user mode.
+  3. Jumping to the exact instruction in the user program indicated by its Program Counter.
+* **Dispatcher Latency**: The exact time interval required to stop one process and start another. Dispatcher latency is pure overhead and must be minimized.
 
-## *Queues in process scheduling*
+---
 
-### *Job queue*
-### holds new processes in secondary memory, manages by LTS
-### *Ready queue*
-### holds processes ready for cpu , it is managed by sts
-### *waiting queue*
-### holds processes waiting for I/O
+## 7. Context Switching Step-by-Step
 
-<!-- Process Creation Steps -->
+A **Context Switch** occurs when the CPU halts execution of one process and begins executing another:
 
-<!-- Load program + static data
-Allocate stack and heap
-Handle IO
-OS hands control to main() -->
+```
+Process P0                       OS Kernel                       Process P1
+----------                       ---------                       ----------
+Executing ...
+Interrupt or Syscall  ----->
+                             Save P0 state into PCB0
+                             Update scheduling queues
+                             Select P1 from Ready Queue
+                             Load P1 state from PCB1
+                      <----- Resume Execution
+                                                                 Executing ...
+```
 
-<!-- Summary Flow:
-Program is created → becomes Process (NEW)
-Goes to Job Queue → LTS brings it to memory → becomes READY
-STS dispatches to CPU → RUNNING
-Depending on execution, can:
-Finish → TERMINATED
-Need IO → WAITING
-Preempted (quantum over) → READY again
-Swapped out → Suspend states -->
+1. An interrupt occurs (timer quantum expires) or a system call is made.
+2. The kernel saves the current state (Program Counter, registers, stack pointer) of process $P_0$ into its PCB.
+3. The kernel moves $P_0$ to the appropriate queue (Ready or Waiting).
+4. The scheduler picks process $P_1$.
+5. The kernel restores $P_1$'s context from its PCB into the CPU registers.
+6. The CPU jumps to $P_1$'s restored Program Counter and resumes execution.
 
-## *what is program counter*
+---
 
-### program counter is a special cpu register that stores the address of the next instruction that needs to be executed in a process
+## 8. Inter-Process Communication (IPC)
 
- <!-- How It Works During Execution:
-When a process is running, the CPU fetches the instruction from the address stored in the PC.
-It executes the instruction.
-Then, the PC is automatically updated to point to the next instruction.
-🔁 This continues in a cycle:
-Fetch → Execute → Increment PC -->
-<!-- 
-During Context Switching:
-When a process is paused (e.g., time slice is over or it's waiting for I/O), the value of the PC is saved in the PCB (Process Control Block).
+Processes can be **Independent** (do not share data) or **Cooperative** (share data and state). Cooperative processes require **Inter-Process Communication (IPC)**:
 
-When the process is resumed, the PC value is restored from the PCB, and the process continues from exactly where it left off. -->
+```
+       [ Shared Memory Model ]                  [ Message Passing Model ]
+Process A                  Process B         Process A                  Process B
+    \                          /                 │                          ▲
+     \                        /                  │  send(msg)   receive(msg)│
+      ▼                      ▼                   ▼                          │
+    [ Common Shared Memory Region ]          [ OS Kernel Message Queue / Buffer ]
+```
 
-<!-- Context switching is the process of saving the state of a currently running process and restoring the state of another process, so the CPU can switch from one process to another. -->
-
-<!-- 
-Why do we do context switching?
-Because:
-A process may be waiting for I/O.
-Time slice is over in round-robin scheduling.
-A higher-priority process just arrived. -->
-
-
-
-
-
+1. **Shared Memory**:
+   * Processes map a common physical memory region into their virtual address spaces.
+   * **Advantage**: Very fast (data is read/written at memory speed without copying through the kernel).
+   * **Challenge**: Processes must synchronize access themselves (using semaphores/mutexes) to prevent race conditions.
+2. **Message Passing**:
+   * Processes communicate by sending and receiving structured messages through the OS kernel using system calls (`send()`, `recv()`).
+   * **Advantage**: Safe and easy to implement across different machines in a distributed network.
+   * **Disadvantage**: Slower due to kernel context switches and memory copying.
