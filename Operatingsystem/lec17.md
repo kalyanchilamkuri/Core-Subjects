@@ -1,94 +1,159 @@
+# Synchronization Primitives: Condition Variables and Semaphores
 
-🚀 Goal: Synchronize threads and avoid problems like race conditions, busy waiting, and deadlocks.
+---
 
-part-1:conditional variables - wait for a condition to happen
+## 1. Condition Variables
 
-What is a conditional variable?
+A **Condition Variable** is a synchronization primitive that enables a thread to suspend execution (**sleep without consuming CPU cycles**) until a specific application condition evaluates to true, signaled by another thread.
 
-A conditional variable is a synchronization tool that lets a thread sleep (wait) until some condition becomes true. Another thread signals that it's okay to continue.
+### Why Must Condition Variables Be Used With a Mutex?
+1. The shared variable being tested (e.g., `queue.empty()` or `bool ready`) is accessed by multiple threads and requires mutual exclusion.
+2. The `wait()` operation **atomically** releases the acquired mutex lock and places the calling thread into a sleep queue.
+3. When the thread is signaled and awakened, it **atomically re-acquires the mutex lock** before `wait()` returns.
 
-✅ Key Points:
-*   It works with a lock — a thread must acquire the lock first before waiting.
-*   The thread goes to sleep using `wait()` and releases the lock while sleeping.
-*   Another thread calls `notify()` or `notify_all()` when the condition is satisfied.
-*   The waiting thread wakes up, automatically reacquires the lock, and resumes.
-✅ It works with a lock — a thread must acquire the lock first before waiting.
-💤 The thread goes to sleep using wait() and releases the lock while sleeping.
-🔔 Another thread calls notify() or notify_all() when the condition is satisfied.
-🔄 The waiting thread wakes up, automatically reacquires the lock, and resumes
+```
+Waiting Thread (Consumer):
+1. Acquire Mutex Lock.
+2. Check Condition. If false:
+   -> Call cv.wait(lock).
+   -> Atomically releases lock and sleeps.
+   -> [Woken up by notify_one()]
+   -> Reacquires lock automatically.
+3. Execute critical work with lock held.
+4. Release Mutex Lock.
+```
 
+### The Spurious Wakeup Problem:
+In multithreaded systems, an operating system thread may occasionally wake up even if no explicit signal was sent (known as a **spurious wakeup**), or another thread may consume the resource before the newly awakened thread runs.  
+**Rule**: Always wrap `wait()` in a **`while` loop** or pass a predicate lambda, never an `if` statement:
 
-#include <iostream>
-#include <thread>
-#include <bits/stdc++.h>
-
-using namespace std;
-
-mutex mtx;
-condition_variable cv;
-bool ready = false;
-
-void worker() {
-    unique_lock<mutex> lock(mtx);
-    cv.wait(lock, [] { return ready; }); // Wait until "ready" is true
-    cout << "Worker thread running\n";
+```cpp
+// Correct:
+while (!ready) {
+    cv.wait(lock);
 }
 
-void notifier() {
-    this_thread::sleep_for(chrono::seconds(1)); // Simulate work
-    lock_guard<mutex> lock(mtx);
-    ready = true;
-    cv.notify_one(); // Wake up one waiting thread
-}
+// Or using standard C++ predicate:
+cv.wait(lock, [] { return ready; });
+```
 
-int main() {
-    thread t1(worker);
-    thread t2(notifier);
-
-    t1.join();
-    t2.join();
-}
-
-
-Semaphores => count how many threads can enter
-
-what is a semaphore?
-
-A semaphore is an integer-based synchronization primitive used to control access to a shared resource
-
-2 types:
-1)binary semaphore  => acts like lock 
-2)counting semaphore => controls like multiple resource access
-
-Key functions:
-wait(S) or P(S)
-=> ties to decrease the count (access resource)
-=> if (S==0), thread blocks (sleeps)
-
-signal(S) or V(S)
-=> increases the semaphore count(releases resource)
-=> vakes up one blocked thread , if any
-
-code for couting semaphore
-
-
+### Complete Modern C++ Example:
+```cpp
 #include <iostream>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-using namespace std;
+#include <chrono>
 
-class Semaphore {
+std::mutex mtx;
+std::condition_variable cv;
+bool ready = false;
+
+void worker() {
+    std::unique_lock<std::mutex> lock(mtx);
+    std::cout << "[Worker] Waiting for data to be ready...\n";
+    
+    // Atomically releases lock and sleeps until ready == true
+    cv.wait(lock, [] { return ready; });
+    
+    std::cout << "[Worker] Condition met! Processing data now...\n";
+}
+
+void sender() {
+    std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate preparation work
+    
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        ready = true;
+        std::cout << "[Sender] Data prepared! Notifying worker...\n";
+    }
+    
+    cv.notify_one(); // Wake up one waiting thread
+}
+
+int main() {
+    std::thread t1(worker);
+    std::thread t2(sender);
+
+    t1.join();
+    t2.join();
+    return 0;
+}
+```
+
+---
+
+## 2. Semaphores: The Classical Signaling Primitive
+
+Introduced by Edsger Dijkstra, a **Semaphore** is an integer variable that, apart from initialization, is accessed only through two standard atomic operations:
+
+1. **`wait(S)`** (also historically termed **$P(S)$**, from Dutch *proberen* "to test"):
+   * Decrements the semaphore value $S$.
+   * If $S \le 0$, the calling thread is blocked and placed on the waiting queue.
+2. **`signal(S)`** (also historically termed **$V(S)$**, from Dutch *verhogen* "to increment"):
+   * Increments the semaphore value $S$.
+   * If any threads are blocked on the waiting queue, one thread is removed from the wait queue and placed onto the Ready Queue.
+
+---
+
+### Non-Busy Waiting (OS-Level Implementation)
+To eliminate wasteful spinlocks (busy-waiting), modern operating systems implement semaphores using block/wakeup routines:
+
+```c
+struct semaphore {
+    int value;
+    struct process_node *wait_queue; // Linked list of blocked processes
+};
+
+void wait(semaphore *S) {
+    S->value--;
+    if (S->value < 0) {
+        // Add this process to S->wait_queue
+        block(); // Changes state to WAITING and yields CPU
+    }
+}
+
+void signal(semaphore *S) {
+    S->value++;
+    if (S->value <= 0) {
+        // Remove process P from S->wait_queue
+        wakeup(P); // Moves process P to READY queue
+    }
+}
+```
+
+---
+
+## 3. Types of Semaphores
+
+### A. Binary Semaphore (Value can only be 0 or 1)
+* Initialized to `1`.
+* Functions identically to a mutual exclusion lock, restricting access to one process at a time.
+
+### B. Counting Semaphore (Value can be any non-negative integer $N$)
+* Initialized to $N$, representing $N$ available instances of a finite resource (e.g., 3 database connections or 2 printer ports).
+* Up to $N$ threads can enter simultaneously before incoming threads block.
+
+### C++ Counting Semaphore Implementation:
+```cpp
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+
+class CountingSemaphore {
+private:
     std::mutex mtx;
     std::condition_variable cv;
     int count;
 
 public:
-    Semaphore(int value) : count(value) {}
+    CountingSemaphore(int initial_value) : count(initial_value) {}
 
     void wait() {
         std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [&] { return count > 0; });
+        cv.wait(lock, [this] { return count > 0; });
         count--;
     }
 
@@ -99,41 +164,32 @@ public:
     }
 };
 
-// Shared semaphore
-Semaphore sem(2); // Only 2 threads allowed at a time
+CountingSemaphore sem(2); // Allow at most 2 concurrent threads
 
-void accessResource(int id) {
+void worker(int id) {
     sem.wait();
-    std::cout << "Thread " << id << " in critical section\n";
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    std::cout << "Thread " << id << " exiting\n";
+    std::cout << "Thread " << id << " acquired resource (Active)\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::cout << "Thread " << id << " releasing resource (Done)\n";
     sem.signal();
 }
 
 int main() {
-    std::thread t1(accessResource, 1);
-    std::thread t2(accessResource, 2);
-    std::thread t3(accessResource, 3);
-    std::thread t4(accessResource, 4);
-
-    t1.join(); t2.join(); t3.join(); t4.join();
+    std::vector<std::thread> threads;
+    for (int i = 1; i <= 5; ++i) {
+        threads.emplace_back(worker, i);
+    }
+    for (auto &t : threads) t.join();
+    return 0;
 }
-
 ```
 
-### Semaphore at the OS Level:
+---
 
-=> when a thread calls wait():
-*) Its moved to the wait queue(not using cpu)
-*) OS puts it in the waiting state
+## 4. Mutex vs. Semaphore vs. Condition Variable
 
-=> when another thread calls signla()
-*) OS uses a `wakeup()` call to move one waiting thread to the ready queue.
-*) That thread will run when the scheduler picks it.
-
-## Final Summary:
-
-=> conditional variables are great when a thread must wait for something to happen (like a flag turning true)
-=> semaphores are great when you want to limit concurrent access to a resource 
-=> both help avoid busy waiting , save cpu time and prevent race conditions
-
+| Primitive | Category | Key Purpose | Can Multiple Enter? | Ownership Rule |
+|---|---|---|:---:|---|
+| **Mutex** | Locking | Protect a shared critical resource | ❌ No (strictly 1) | **Strictly Owned**: Only the thread that locked the mutex can unlock it. |
+| **Counting Semaphore** | Signaling | Manage access to $N$ finite resources |  Yes (up to $N$) | **No Ownership**: Any thread can call `signal()` to wake waiting threads. |
+| **Condition Variable** | Notification | Sleep until an application condition becomes true | Dependent on predicate | Always paired with an underlying Mutex lock. |
