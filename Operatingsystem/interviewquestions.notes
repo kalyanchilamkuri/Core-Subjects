@@ -1,75 +1,265 @@
-1. What is the difference between a process and a thread?
-Hmm... A process is like a big box containing everything it needs: memory, code, data, etc. A thread is like a smaller path inside that box, which executes instructions.
-Process is an independent unit of execution. Has its own memory.
-Thread is a lightweight subpart of a process. It shares the memory with other threads of the same process.
-Example: Running Google Chrome = process
-Each tab or script running inside = thread
+# Operating System - Top Core Interview Questions & Answers
 
+---
 
-✅ 2. Why are threads called lightweight processes?
-Let me think... Threads are called lightweight processes because:
-They don’t need separate memory space — they just use what the process already has.
-Creating and switching between threads is much faster and less resource-heavy than doing the same for full processes.
-So yeah, they're like “mini-processes” running under the same roof.
+## Section 1: Processes, Threads & Concurrency
 
+### 1. What is the difference between a Program, a Process, and a Thread?
+* **Program**: A passive entity containing executable instructions stored on the disk (e.g., `chrome.exe`). It takes up no RAM and uses no CPU until launched.
+* **Process**: A program in active execution loaded into RAM. It has its own dedicated address space (Code, Data, Heap, Stack), registers, and OS resources (open files, network sockets).
+* **Thread**: The smallest unit of CPU execution inside a process, often called a **lightweight process (LWP)**. Multiple threads inside the same process share the process's code, data, heap, and open files, but each thread has its own **Stack**, **Program Counter (PC)**, and **Registers**.
 
-✅ 3. What are the benefits of multithreading?
-Hmm, the main benefits are:
-Better CPU usage – Threads can run in parallel on multi-core CPUs.
-Responsiveness – UI won't freeze, because background tasks run on different threads.
-Faster execution – Tasks are split and handled independently.
-Memory efficiency – All threads share the same memory.
-Example: While typing in MS Word:
-One thread handles typing,
-Another checks spelling,
-Another auto-saves.
+> **Real-World Example**:
+> Imagine a restaurant:
+> * The **Program** is the recipe book on the shelf.
+> * The **Process** is the active kitchen running during dinner.
+> * The **Threads** are individual chefs in that kitchen sharing the same ingredients, stove, and utensils, but each cooking their own dish.
 
+---
 
-✅ 4. What are user-level vs kernel-level threads?
-Yeah so…
-Feature	User-Level Thread (ULT)	Kernel-Level Thread (KLT)
-Managed by	User library	OS Kernel
-Speed	Fast to create/switch	Slower
-Kernel-aware?	No	Yes
-If 1 thread blocks?	All block	Only that one blocks
-Used when	Speed is priority	Need true parallelism
+### 2. Why are threads called "lightweight processes"?
+Threads are considered lightweight because:
+1. **Shared Resources**: Threads within the same process share memory address space, global variables, and file descriptors. Creating a thread does not require allocating an entire new memory segment.
+2. **Faster Creation & Termination**: Creating or terminating a thread takes significantly less time and CPU overhead than creating or destroying a full process.
+3. **Faster Context Switching**: Switching between threads of the same process is much faster because the CPU does not need to invalidate the TLB (Translation Lookaside Buffer) or switch page tables.
 
+---
 
+### 3. What is Context Switching? Why is it considered an overhead?
+* **Context switching** is the procedure where the CPU saves the current state (context) of a running process or thread into its PCB (Process Control Block) or TCB (Thread Control Block) and restores the state of another ready process/thread so it can run.
+* **Why it is an overhead**: During a context switch, the CPU is performing administrative work (saving registers, updating data structures, flushing cache lines) rather than executing any user instructions. No useful user work happens during this time.
 
-✅ 5. Explain context switching between threads and processes.
-Ahh okay, so:
-Context switching means saving the current state (registers, memory info) and loading another’s.
-Between processes → heavier: OS switches full memory context, stack, etc.
-Between threads → lighter: Memory is shared, only thread-specific data (like program counter, stack) is switched.
-So basically, thread switching is faster and more efficient.
+---
 
+### 4. What are User-Level Threads (ULT) vs. Kernel-Level Threads (KLT)?
 
-✅ 6. What are the types of multithreading models?
-There are mainly 3 models:
-Many-to-One – Many user threads map to one kernel thread
-Simple, but not scalable (one blocks, all block)
-One-to-One – Each user thread maps to one kernel thread
-Parallelism possible, but costly for many threads
-Many-to-Many – Many user threads map to many kernel threads\
-Most flexible and scalable
+| Feature | User-Level Thread (ULT) | Kernel-Level Thread (KLT) |
+|---|---|---|
+| **Management** | Managed entirely by user-space thread libraries (e.g., green threads). | Managed directly by the OS Kernel. |
+| **Speed** | Very fast creation and switching (no mode switch). | Slower (requires switching from user to kernel mode). |
+| **Kernel Awareness** | Kernel is unaware of individual threads; sees only the parent process. | Kernel manages and schedules each thread individually. |
+| **Blocking Calls** | If one thread makes a blocking system call, the **entire process blocks**. | If one thread blocks, other threads of the process continue running. |
+| **Multi-Core Utilization** | Cannot run threads across multiple CPU cores simultaneously. | Kernel can schedule different threads on different CPU cores in parallel. |
 
+---
 
-✅ 7. Can threads in the same process access each other’s data?
-Yes! That's actually one of the core features of threads.
-All threads of a process share memory, so they can access the same data structures.
-But... it can cause race conditions or bugs if not synchronized properly (like two threads writing at same time).
+### 5. Can threads in the same process access each other’s data?
+* **Yes**: All threads share the same Heap and Data segment (global and static variables).
+* **Private data**: Each thread has its own private Stack for local variables and function calls.
+* **Risk**: If two threads attempt to read and modify shared data at the same time without synchronization, a **race condition** occurs.
 
+---
 
-✅ 8. What happens if one thread crashes?
-Hmm... if one thread crashes:
-It can affect the whole process, because all threads share the same memory space.
-For example, if one thread corrupts a shared variable or crashes the heap, all threads might go down.
-That’s why proper error handling and synchronization is super important.
+### 6. What happens if one thread crashes?
+* In most operating systems, if an unhandled fatal error (such as a segmentation fault or divide-by-zero) occurs in one thread, the OS terminates the **entire process**, taking down all sibling threads.
+* This happens because all threads share the same memory space, and a memory corruption in one thread can compromise the entire process integrity.
 
+---
 
-✅ 9. How is scheduling handled between multiple threads?
-Oh right! So the Operating System’s scheduler handles this — especially in the case of kernel-level threads.
-Each thread gets a time slice or priority.
-Threads can be preempted (paused and resumed later).
-In user-level threads, the thread library handles scheduling, not the OS.
-So depending on the type (user/kernel), either the thread library or the OS handles the scheduling.
+### 7. What is the difference between Concurrency and Parallelism?
+* **Concurrency**: Managing multiple tasks by interleaving their execution over overlapping time periods. Even on a single-core CPU, concurrency creates the illusion of simultaneous execution through rapid context switching.
+  * *Analogy*: A single juggler juggling three balls with two hands.
+* **Parallelism**: Executing multiple tasks literally at the exact same physical instant on separate CPU cores or processors.
+  * *Analogy*: Three jugglers each juggling their own ball at the same time.
+
+---
+
+### 8. Does multithreading improve performance on a single-core CPU?
+* **For CPU-bound tasks**: **No**. Context switching adds extra overhead, so pure computation tasks will actually run slightly slower.
+* **For I/O-bound tasks**: **Yes**. While one thread is blocked waiting for disk I/O, user input, or network data, another thread can utilize the CPU, keeping responsiveness high.
+
+---
+
+### 9. What are Orphan and Zombie processes?
+* **Orphan Process**: A child process whose parent terminated or exited before the child finished.
+  * *Fate*: The operating system adopts the orphan process under the root process (`init` in Linux or `systemd`, PID 1), which periodically reaps it when it exits.
+* **Zombie Process**: A child process that has finished execution (called `exit()`), but its entry still remains in the OS Process Table because its parent has not yet read its exit status via the `wait()` system call.
+  * *Why they exist*: The OS preserves the child's termination status so the parent can check if it succeeded or failed.
+  * *Problem*: Too many un-reaped zombies consume Process IDs (PIDs), eventually preventing new processes from being spawned.
+
+---
+
+## Section 2: Process Synchronization & Concurrency Problems
+
+### 10. What is a Critical Section and a Race Condition?
+* **Critical Section**: A portion of code that accesses shared resources (such as shared variables, files, or hardware) that must not be concurrently accessed by more than one thread/process.
+* **Race Condition**: A situation where multiple threads read and write shared data concurrently, and the final outcome depends on the unpredictable order in which the CPU schedules the threads.
+
+---
+
+### 11. What are the three essential requirements to solve the Critical Section Problem?
+1. **Mutual Exclusion**: Only one process/thread can be executing in its critical section at any given time.
+2. **Progress**: If no process is executing in its critical section and some processes want to enter, only processes not in their remainder section can participate in deciding who enters next, and this decision cannot be postponed indefinitely.
+3. **Bounded Waiting**: There must be a guaranteed limit on the number of times other processes are allowed to enter their critical sections after a process has requested entry, ensuring no process starves forever.
+
+---
+
+### 12. What is the difference between a Mutex and a Semaphore?
+
+| Feature | Mutex (Mutual Exclusion) | Semaphore |
+|---|---|---|
+| **Type** | Locking mechanism. | Signaling mechanism. |
+| **Capacity** | Strictly binary (Locked or Unlocked). | Can be Binary (0 or 1) or Counting (integer $\ge 0$). |
+| **Ownership** | Owned by the thread that locked it. Only the owner can unlock it. | Has no owner. Any thread can signal/release a semaphore. |
+| **Use Case** | Protecting a single critical section or shared variable. | Managing a finite pool of identical resources (e.g., 5 database connections). |
+
+---
+
+### 13. How does Peterson's Algorithm work? What are its limitations?
+* **How it works**: A classic software-based solution for mutual exclusion between **two processes**. It uses two variables:
+  * `bool flag[2]`: Indicates if a process is interested in entering the critical section.
+  * `int turn`: Indicates whose turn it is to enter.
+* **Limitations**:
+  1. Only works for strictly two processes.
+  2. Uses busy waiting (spinlocks), wasting CPU cycles while waiting.
+  3. Relies on sequential memory consistency; modern multi-core processors with out-of-order execution and memory caching can reorder reads/writes, causing it to fail without explicit memory barriers.
+
+---
+
+### 14. What are Condition Variables? Why are they used with a Mutex?
+* A **Condition Variable** is a synchronization primitive that allows a thread to suspend execution (`wait`) until some application condition becomes true, at which point another thread signals it (`notify_one` or `notify_all`).
+* **Why used with a Mutex**:
+  1. The shared condition (e.g., `queue.empty()`) must be checked and updated safely under a lock to prevent race conditions.
+  2. Calling `wait()` atomically releases the mutex and puts the thread to sleep. When awakened, the thread automatically reacquires the mutex before continuing.
+
+---
+
+## Section 3: Deadlocks
+
+### 15. What is a Deadlock? What are the 4 Coffman Conditions?
+A **Deadlock** is a state where two or more processes are permanently blocked because each is holding a resource that another process needs, and neither can proceed.
+
+Deadlock can occur **if and only if all four conditions hold simultaneously**:
+1. **Mutual Exclusion**: At least one resource must be non-shareable (held in exclusive mode).
+2. **Hold and Wait**: A process holds at least one resource while waiting to acquire additional resources held by other processes.
+3. **No Preemption**: Resources cannot be forcibly taken away; they can only be released voluntarily by the holding process.
+4. **Circular Wait**: A closed loop of processes exists where $P_0$ waits for a resource held by $P_1$, $P_1$ waits for $P_2$, ..., and $P_n$ waits for $P_0$.
+
+---
+
+### 16. What are the main strategies for handling Deadlocks?
+1. **Deadlock Prevention**: Design the system to ensure that at least one of the four Coffman conditions can never hold (e.g., impose a global resource ordering to eliminate circular wait).
+2. **Deadlock Avoidance**: Dynamically inspect each resource request at runtime; allocate resources only if the system remains in a **safe state** (e.g., **Banker's Algorithm**).
+3. **Deadlock Detection and Recovery**: Allow deadlocks to happen, periodically run detection algorithms (like checking for cycles in a Resource Allocation Graph), and recover by terminating processes or preempting resources.
+4. **Ostrich Algorithm (Ignore)**: Pretend deadlocks never occur. Most general-purpose OSes (Linux, Windows, macOS) adopt this approach because deadlocks are relatively infrequent and the cost of prevention/avoidance is too high.
+
+---
+
+### 17. What is the difference between Deadlock, Starvation, and Livelock?
+* **Deadlock**: Two or more processes are permanently blocked waiting on each other. No CPU is consumed; no process makes progress.
+* **Starvation**: A runnable process is ready to execute but is indefinitely postponed because higher-priority processes continually preempt it (e.g., in priority scheduling without aging).
+* **Livelock**: Two or more processes continually change their internal states in response to each other without making any real forward progress. CPU usage is active (100%), but nothing gets accomplished.
+
+---
+
+## Section 4: CPU Scheduling
+
+### 18. What is the difference between Preemptive and Non-Preemptive Scheduling?
+* **Preemptive Scheduling**: The OS can forcibly take the CPU away from a running process before it finishes (e.g., when a higher-priority process arrives or when its time quantum expires in Round Robin).
+* **Non-Preemptive Scheduling**: Once a process is allocated the CPU, it keeps running until it terminates or voluntarily blocks for I/O (e.g., standard FCFS or non-preemptive SJF).
+
+---
+
+### 19. What is the Convoy Effect in FCFS? How is it resolved?
+* **Convoy Effect**: In First-Come-First-Served (FCFS) scheduling, if a long CPU-bound process arrives first, all subsequent short I/O-bound processes are stuck waiting behind it in the ready queue. This leads to poor CPU and device utilization and high average waiting time.
+* **Solution**: Use preemptive algorithms like **Round Robin (RR)** or **Shortest Remaining Time First (SRTF)**.
+
+---
+
+### 20. What is "Aging" in Priority Scheduling?
+* In priority scheduling, low-priority processes can suffer from **starvation** if higher-priority processes keep arriving.
+* **Aging** is a technique where the OS gradually increments the priority of processes waiting in the ready queue over time (e.g., increasing priority by 1 every minute). Eventually, even the lowest-priority process becomes highest-priority and executes.
+
+---
+
+### 21. How does the choice of Time Quantum affect Round Robin scheduling?
+* **If Time Quantum is too large**: Round Robin behaves identically to **FCFS**, increasing average response and turnaround times.
+* **If Time Quantum is too small**: The CPU spends too much time performing **context switches** instead of doing actual computation, drastically degrading throughput.
+* **Rule of thumb**: The time quantum should be chosen such that approximately 80% of CPU bursts are shorter than the quantum.
+
+---
+
+## Section 5: Memory Management & Virtual Memory
+
+### 22. What is Virtual Memory? Why is it important?
+* **Virtual Memory** is a memory management technique that gives an application the illusion of having a vast, continuous block of memory, even if physical RAM is limited and fragmented.
+* **Benefits**:
+  1. Programs larger than physical RAM can execute.
+  2. Increases the degree of multiprogramming.
+  3. Provides memory protection and isolation: one process cannot corrupt another's memory.
+
+---
+
+### 23. What is Paging? What is the difference between Internal and External Fragmentation?
+* **Paging**: Dividing logical memory into fixed-size blocks called **Pages**, and physical RAM into blocks of identical size called **Frames**.
+* **External Fragmentation**: Free memory space exists to satisfy a request, but it is split into small non-contiguous chunks, so contiguous allocation fails.
+  * *Paging completely eliminates external fragmentation.*
+* **Internal Fragmentation**: Memory allocated to a process is slightly larger than requested (e.g., allocating a 4 KB frame for a 1 KB process). The unused 3 KB within the page cannot be used by other processes.
+
+---
+
+### 24. What is a Page Table and what is the TLB (Translation Lookaside Buffer)?
+* **Page Table**: An OS data structure that maps a process's virtual page numbers (VPN) to physical frame numbers (PFN). Stored in RAM.
+* **TLB**: A small, ultra-fast hardware cache located directly on the CPU memory management unit (MMU) that stores recent virtual-to-physical address mappings.
+  * **TLB Hit**: Address translation takes 1 CPU cycle.
+  * **TLB Miss**: The MMU must query the Page Table in main RAM (taking extra memory accesses), then updates the TLB.
+
+---
+
+### 25. What is a Page Fault? What are the steps to handle it?
+A **Page Fault** is an interrupt (trap) raised by the CPU hardware when a program tries to access a virtual memory page that is currently not present in physical RAM (the valid/invalid bit in the page table entry is 0).
+
+**Handling Steps**:
+1. CPU traps to the OS kernel.
+2. OS saves registers and the process state.
+3. OS checks whether the memory access was valid (legal address). If invalid, a segmentation fault is raised.
+4. If valid, the OS finds a free physical frame in RAM (or evicts a page using a page replacement algorithm).
+5. OS schedules disk I/O to read the required page from swap space on disk into the chosen frame.
+6. Once I/O completes, the OS updates the page table (sets frame number, marks valid bit = 1).
+7. The OS restores process state and restarts the exact CPU instruction that caused the page fault.
+
+---
+
+### 26. What is Belady’s Anomaly? Which algorithms suffer from it?
+* **Belady's Anomaly**: The counter-intuitive phenomenon where increasing the number of physical page frames results in an **increase** in the number of page faults.
+* **Which algorithms suffer**: FIFO (First-In, First-Out) page replacement.
+* **Stack Algorithms**: Algorithms like **LRU (Least Recently Used)** and **Optimal** never suffer from Belady's Anomaly because the set of pages in memory for $N$ frames is always a subset of pages for $N+1$ frames.
+
+---
+
+### 27. What is Thrashing and how is it resolved?
+* **Thrashing**: A state where the CPU spends significantly more time swapping pages in and out of disk than executing instructions. This happens when the total working sets of active processes exceed available physical RAM.
+* **Resolution**:
+  1. Use the **Working Set Model**: Ensure each process has enough frames to hold its active working set before scheduling it.
+  2. Reduce the degree of multiprogramming by temporarily swapping out entire processes.
+  3. Add more physical RAM.
+
+---
+
+## Section 6: Architecture, System Calls & File Systems
+
+### 28. What is the difference between User Mode and Kernel Mode?
+* **User Mode (Mode bit = 1)**: Regular application code executes with restricted privileges. Applications cannot directly access hardware, execute privileged CPU instructions, or modify OS data structures.
+* **Kernel Mode (Mode bit = 0)**: The OS kernel executes with unrestricted hardware access. It can execute privileged instructions, manage memory, and directly access devices.
+
+---
+
+### 29. What is a System Call and how does mode switching work?
+* A **system call** is the programmatic mechanism an application uses to request services from the operating system kernel (e.g., `read()`, `write()`, `fork()`, `open()`).
+* **Workflow**:
+  1. Application sets up parameters in CPU registers or on the stack.
+  2. Application executes a software interrupt or trap instruction (e.g., `syscall` on x86-64).
+  3. Hardware switches the CPU mode bit from User mode (1) to Kernel mode (0) and jumps to the kernel's System Call Handler table.
+  4. The kernel validates parameters and performs the requested operation.
+  5. The kernel returns the result and executes `sysret`, switching the mode bit back to User mode (1).
+
+---
+
+### 30. What is the difference between Monolithic Kernel and Microkernel?
+
+| Aspect | Monolithic Kernel (e.g., Linux, Windows) | Microkernel (e.g., QNX, Minix) |
+|---|---|---|
+| **Structure** | All OS services (scheduler, drivers, file systems, IPC) run inside kernel space. | Only bare essentials (IPC, basic scheduling, memory mapping) run in kernel space. |
+| **Performance** | Fast; functions communicate via direct function calls. | Slower; services communicate via message passing across user/kernel boundary. |
+| **Reliability** | A bug in a third-party driver can crash the entire system. | Highly reliable; if a file system or driver crashes in user space, it restarts cleanly. |
+| **Size** | Large kernel footprint. | Very small kernel code base. |
